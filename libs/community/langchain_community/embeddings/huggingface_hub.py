@@ -40,6 +40,7 @@ class HuggingFaceHubEmbeddings(BaseModel, Embeddings):
     """Keyword arguments to pass to the model."""
 
     huggingfacehub_api_token: Optional[str] = None
+    max_batch_size: int = 32 
 
     class Config:
         """Configuration for this pydantic object."""
@@ -98,13 +99,16 @@ class HuggingFaceHubEmbeddings(BaseModel, Embeddings):
         Returns:
             List of embeddings, one for each text.
         """
-        # replace newlines, which can negatively affect performance.
         texts = [text.replace("\n", " ") for text in texts]
-        _model_kwargs = self.model_kwargs or {}
-        responses = self.client.post(
-            json={"inputs": texts, "parameters": _model_kwargs}, task=self.task
-        )
-        return json.loads(responses.decode())
+        all_responses = []
+        for i in range(0, len(texts), self.max_batch_size):
+            batch_texts = texts[i : i + self.max_batch_size]
+            responses = self.client.post(
+                json={"inputs": batch_texts, "parameters": self.model_kwargs or {}},
+                task=self.task,
+            )
+            all_responses.extend(json.loads(responses.decode()))
+        return all_responses
 
     async def aembed_documents(self, texts: List[str]) -> List[List[float]]:
         """Async Call to HuggingFaceHub's embedding endpoint for embedding search docs.
@@ -115,13 +119,16 @@ class HuggingFaceHubEmbeddings(BaseModel, Embeddings):
         Returns:
             List of embeddings, one for each text.
         """
-        # replace newlines, which can negatively affect performance.
         texts = [text.replace("\n", " ") for text in texts]
-        _model_kwargs = self.model_kwargs or {}
-        responses = await self.async_client.post(
-            json={"inputs": texts, "parameters": _model_kwargs}, task=self.task
-        )
-        return json.loads(responses.decode())
+        all_responses = []
+        for i in range(0, len(texts), self.max_batch_size):
+            batch_texts = texts[i : i + self.max_batch_size]
+            responses = await self.async_client.post(
+                json={"inputs": batch_texts, "parameters": self.model_kwargs or {}},
+                task=self.task,
+            )
+            all_responses.extend(json.loads(responses.decode()))
+        return all_responses
 
     def embed_query(self, text: str) -> List[float]:
         """Call out to HuggingFaceHub's embedding endpoint for embedding query text.
@@ -132,8 +139,7 @@ class HuggingFaceHubEmbeddings(BaseModel, Embeddings):
         Returns:
             Embeddings for the text.
         """
-        response = self.embed_documents([text])[0]
-        return response
+        return self.embed_documents([text])[0]
 
     async def aembed_query(self, text: str) -> List[float]:
         """Async Call to HuggingFaceHub's embedding endpoint for embedding query text.
@@ -144,5 +150,4 @@ class HuggingFaceHubEmbeddings(BaseModel, Embeddings):
         Returns:
             Embeddings for the text.
         """
-        response = (await self.aembed_documents([text]))[0]
-        return response
+        return (await self.aembed_documents([text]))[0]
